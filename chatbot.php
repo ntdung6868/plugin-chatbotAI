@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối trực tiếp với n8n Webhook có menu cài đặt. Lưu lịch sử chat khi F5.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.0.2');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.0.3');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -325,6 +325,79 @@ function ntdungdev_chat_settings_page() {
                 setTimeout(function(){ window.location.reload(true); }, 1000);
             };
             xhr.send('action=ntdungdev_chatbot_do_update&nonce=<?php echo $update_nonce; ?>');
+        }
+        </script>
+
+        <!-- KHUNG THỐNG KÊ CLICK -->
+        <?php
+        $click_stats = get_option('ntdungdev_chat_click_stats', []);
+        if (!is_array($click_stats)) $click_stats = [];
+        $today = current_time('Y-m-d');
+        $today_clicks = isset($click_stats[$today]) ? (int) $click_stats[$today] : 0;
+        $total_clicks = array_sum($click_stats);
+
+        // Lấy 7 ngày gần nhất
+        $last7 = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $d = date('Y-m-d', strtotime("-{$i} days", strtotime($today)));
+            $last7[$d] = isset($click_stats[$d]) ? (int) $click_stats[$d] : 0;
+        }
+        $max_clicks = max(1, max($last7));
+        $reset_nonce = wp_create_nonce('ntdungdev_reset_click_stats');
+        ?>
+        <div style="background:#fff;border:1px solid #c3c4c7;border-left:4px solid #2271b1;padding:16px 20px;margin:0 0 20px;border-radius:4px;">
+            <h2 style="margin:0 0 12px;font-size:15px;color:#1d2327;">Thống kê lượt click nút Chatbot</h2>
+            <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;">
+                <div style="background:#f0f6fc;border:1px solid #c3c4c7;border-radius:6px;padding:12px 20px;min-width:120px;text-align:center;">
+                    <div style="font-size:28px;font-weight:700;color:#2271b1;"><?php echo number_format($total_clicks); ?></div>
+                    <div style="font-size:12px;color:#666;margin-top:2px;">Tổng lượt click</div>
+                </div>
+                <div style="background:#f0f6fc;border:1px solid #c3c4c7;border-radius:6px;padding:12px 20px;min-width:120px;text-align:center;">
+                    <div style="font-size:28px;font-weight:700;color:#00a32a;"><?php echo number_format($today_clicks); ?></div>
+                    <div style="font-size:12px;color:#666;margin-top:2px;">Hôm nay</div>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <strong style="font-size:13px;color:#1d2327;">7 ngày gần nhất:</strong>
+                <div style="display:flex;align-items:flex-end;gap:6px;margin-top:8px;height:80px;">
+                    <?php foreach ($last7 as $date => $count): ?>
+                        <?php $pct = ($count / $max_clicks) * 100; ?>
+                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
+                            <span style="font-size:11px;font-weight:600;color:#1d2327;"><?php echo $count; ?></span>
+                            <div style="width:100%;max-width:40px;background:#2271b1;border-radius:3px 3px 0 0;min-height:4px;height:<?php echo max(4, $pct); ?>%;" title="<?php echo esc_attr($date . ': ' . $count . ' clicks'); ?>"></div>
+                            <span style="font-size:10px;color:#999;"><?php echo date('d/m', strtotime($date)); ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <button type="button" class="button" onclick="ntdungdevResetClickStats()" id="ntdungdev-reset-stats-btn" style="font-size:12px;color:#d63638;border-color:#d63638;">Xoá thống kê</button>
+            <span id="ntdungdev-reset-stats-msg" style="margin-left:10px;font-size:12px;display:none;"></span>
+        </div>
+        <script>
+        function ntdungdevResetClickStats() {
+            if (!confirm('Bạn có chắc muốn xoá toàn bộ thống kê lượt click?')) return;
+            var btn = document.getElementById('ntdungdev-reset-stats-btn');
+            var msg = document.getElementById('ntdungdev-reset-stats-msg');
+            btn.disabled = true;
+            btn.textContent = 'Đang xoá...';
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', ajaxurl);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    msg.style.display = 'inline';
+                    msg.style.color = '#00a32a';
+                    msg.textContent = 'Đã xoá thống kê!';
+                    setTimeout(function() { location.reload(); }, 800);
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Xoá thống kê';
+                    msg.style.display = 'inline';
+                    msg.style.color = '#d63638';
+                    msg.textContent = 'Có lỗi xảy ra.';
+                }
+            };
+            xhr.send('action=ntdungdev_reset_click_stats&_ajax_nonce=<?php echo $reset_nonce; ?>');
         }
         </script>
 
@@ -750,7 +823,13 @@ function ntdungdev_render_chat_widget() {
                 const isOpen = win.style.display === 'flex';
                 win.style.display = isOpen ? 'none' : 'flex';
                 btnWrap.classList.toggle('chat-open', !isOpen);
-                if (!isOpen) input.focus();
+                if (!isOpen) {
+                    input.focus();
+                    // Ghi nhận lượt click mở chatbot
+                    const fd = new FormData();
+                    fd.append('action', 'ntdungdev_track_click');
+                    fetch(AJAX_URL, { method: 'POST', body: fd });
+                }
             };
 
             closeBtn.onclick = (e) => {
@@ -1076,5 +1155,39 @@ function ntdungdev_handle_ajax_request() {
 
     $body = wp_remote_retrieve_body($response);
     wp_send_json_success($body);
+}
+
+
+// ==========================================
+// 4. THỐNG KÊ LƯỢT CLICK NÚT CHATBOT
+// ==========================================
+
+add_action('wp_ajax_ntdungdev_track_click', 'ntdungdev_track_click');
+add_action('wp_ajax_nopriv_ntdungdev_track_click', 'ntdungdev_track_click');
+function ntdungdev_track_click() {
+    $stats = get_option('ntdungdev_chat_click_stats', []);
+    if (!is_array($stats)) $stats = [];
+
+    $today = current_time('Y-m-d');
+    $stats[$today] = isset($stats[$today]) ? (int) $stats[$today] + 1 : 1;
+
+    // Giữ tối đa 90 ngày dữ liệu
+    $cutoff = date('Y-m-d', strtotime('-90 days', strtotime($today)));
+    foreach ($stats as $date => $count) {
+        if ($date < $cutoff) unset($stats[$date]);
+    }
+
+    update_option('ntdungdev_chat_click_stats', $stats);
+    wp_send_json_success();
+}
+
+add_action('wp_ajax_ntdungdev_reset_click_stats', 'ntdungdev_reset_click_stats');
+function ntdungdev_reset_click_stats() {
+    check_ajax_referer();
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Không có quyền.');
+    }
+    delete_option('ntdungdev_chat_click_stats');
+    wp_send_json_success();
 }
 ?>
