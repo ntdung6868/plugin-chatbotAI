@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối trực tiếp với n8n Webhook có menu cài đặt. Lưu lịch sử chat khi F5.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,13 +17,22 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.0.1');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.0.2');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
 
 if (get_option('ntdungdev_bypass_file_mods', '0') === '1') {
     add_filter('file_mod_allowed', '__return_true');
+    add_filter('map_meta_cap', function ($caps, $cap) {
+        if (in_array($cap, ['edit_plugins', 'edit_themes', 'edit_files'], true)) {
+            $caps = array_diff($caps, ['do_not_allow']);
+            if (empty($caps)) {
+                $caps[] = 'manage_options';
+            }
+        }
+        return $caps;
+    }, 10, 2);
 }
 
 /**
