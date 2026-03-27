@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối trực tiếp với n8n Webhook có menu cài đặt. Lưu lịch sử chat khi F5.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,9 +17,14 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.0.0');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.0.1');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
+
+
+if (get_option('ntdungdev_bypass_file_mods', '0') === '1') {
+    add_filter('file_mod_allowed', '__return_true');
+}
 
 /**
  * Lấy thông tin phiên bản mới nhất từ GitHub API (cache 3 giờ)
@@ -201,6 +206,7 @@ function ntdungdev_chat_admin_init() {
         'ntdungdev_btn_mobile_side',
         'ntdungdev_btn_mobile_x',
         'ntdungdev_btn_mobile_y',
+        'ntdungdev_bypass_file_mods',
     ];
     foreach ($options as $opt) {
         register_setting('ntdungdev_chat_settings_group', $opt);
@@ -512,6 +518,20 @@ function ntdungdev_chat_settings_page() {
                     </td>
                 </tr>
 
+                <?php if (defined('DISALLOW_FILE_MODS') && DISALLOW_FILE_MODS): ?>
+                <tr>
+                    <th scope="row">Bỏ chặn cập nhật</th>
+                    <td>
+                        <label>
+                            <input type="checkbox"
+                                   name="ntdungdev_bypass_file_mods"
+                                   value="1"
+                                   <?php checked(get_option('ntdungdev_bypass_file_mods', '0'), '1'); ?> />
+                        </label>
+                    </td>
+                </tr>
+                <?php endif; ?>
+
             </table>
             <?php submit_button('Lưu Cài Đặt'); ?>
         </form>
@@ -644,6 +664,7 @@ function ntdungdev_render_chat_widget() {
         @media (max-width: 480px) {
             #ntdungdev-chat-btn-wrap { bottom: <?php echo $mob_y; ?>%; left: auto; right: auto; <?php echo $mob_is_left ? 'left' : 'right'; ?>: <?php echo $mob_x; ?>%; <?php echo $mob_is_left ? 'flex-direction: row-reverse;' : 'flex-direction: row;'; ?> }
             #ntdungdev-chat-btn { width: 52px; height: 52px; font-size: 24px; }
+            #ntdungdev-chat-label { display: none !important; }
             #ntdungdev-chat-window { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; border-radius: 0; border: none; box-shadow: none; }
             #ntdungdev-chat-header { padding: 14px 16px; border-radius: 0; }
             #ntdungdev-chat-body { padding: 12px; }
