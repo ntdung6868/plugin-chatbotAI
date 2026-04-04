@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối trực tiếp với n8n Webhook có menu cài đặt. Lưu lịch sử chat khi F5.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -1013,6 +1013,7 @@ function ntdungdev_render_chat_widget() {
                 formData.append('action', 'ntdungdev_send_message');
                 formData.append('message', text || '');
                 formData.append('session_id', sessionId);
+                formData.append('page_url', window.location.href);
                 if (imageData) {
                     formData.append('image_base64', imageData.image_base64);
                     formData.append('image_name', imageData.image_name);
@@ -1109,6 +1110,7 @@ add_action('wp_ajax_nopriv_ntdungdev_send_message', 'ntdungdev_handle_ajax_reque
 function ntdungdev_handle_ajax_request() {
     $message      = isset($_POST['message']) ? sanitize_text_field($_POST['message']) : '';
     $session_id   = isset($_POST['session_id']) ? sanitize_text_field($_POST['session_id']) : '';
+    $page_url     = isset($_POST['page_url']) ? esc_url_raw($_POST['page_url']) : '';
     $image_base64 = isset($_POST['image_base64']) ? $_POST['image_base64'] : '';
     $image_name   = isset($_POST['image_name']) ? sanitize_file_name($_POST['image_name']) : '';
     $image_mime   = isset($_POST['image_mime']) ? sanitize_text_field($_POST['image_mime']) : '';
@@ -1132,6 +1134,7 @@ function ntdungdev_handle_ajax_request() {
         'session_id' => $website . '_' . $session_id,
         'message'    => $message,
         'website'    => $website,
+        'page_url'   => $page_url,
     );
 
     if (!empty($image_base64)) {
