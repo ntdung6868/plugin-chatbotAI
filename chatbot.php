@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.0.3');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.0.4');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
