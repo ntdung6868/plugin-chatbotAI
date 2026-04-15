@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Hỗ trợ đính kèm ảnh + PDF, streaming response, typing dots animation.
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.1.2');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.1.3');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -863,7 +863,7 @@ function ntdungdev_render_chat_widget() {
             const STREAMING_URL = <?php echo wp_json_encode($streaming_url); ?>;
             const STREAMING_ENABLED = <?php echo $streaming_enabled ? 'true' : 'false'; ?>;
             const WEBSITE = <?php echo wp_json_encode(preg_replace('#^https?://#', '', rtrim(site_url(), '/'))); ?>;
-            const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+            const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB
 
             let selectedFile = null;
 
@@ -970,7 +970,8 @@ function ntdungdev_render_chat_widget() {
                 }
 
                 if (file.size > MAX_FILE_SIZE) {
-                    alert('Kích thước file tối đa là 5MB. Vui lòng chọn file nhỏ hơn.');
+                    const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+                    alert('File của bạn ' + sizeMb + ' MB, vượt quá giới hạn 8 MB. Vui lòng chọn file nhỏ hơn ạ.');
                     this.value = '';
                     return;
                 }
@@ -1271,9 +1272,10 @@ function ntdungdev_handle_image_upload() {
         wp_send_json_error('Chỉ hỗ trợ file ảnh (JPG, PNG, GIF, WebP) hoặc PDF.');
     }
 
-    // Kiểm tra kích thước (5MB)
-    if ($file['size'] > 5 * 1024 * 1024) {
-        wp_send_json_error('Kích thước file tối đa là 5MB.');
+    // Kiểm tra kích thước (8MB)
+    if ($file['size'] > 8 * 1024 * 1024) {
+        $size_mb = number_format($file['size'] / 1024 / 1024, 1);
+        wp_send_json_error('File của bạn ' . $size_mb . ' MB, vượt quá giới hạn 8 MB. Vui lòng chọn file nhỏ hơn.');
     }
 
     // Đọc file thành base64 để gửi trực tiếp cho n8n (tránh lỗi 404 khi n8n tải URL)
