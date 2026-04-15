@@ -2,8 +2,8 @@
 /**
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
- * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Hỗ trợ streaming response real-time, progress messages, lưu lịch sử chat.
- * Version: 1.1.0
+ * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Streaming response, typing dots animation, lưu lịch sử chat.
+ * Version: 1.1.1
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.1.0');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.1.1');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -775,7 +775,18 @@ function ntdungdev_render_chat_widget() {
         @keyframes ntdungdev-spin { to { transform: rotate(360deg); } }
         .ntdungdev-upload-status { font-size: 11px; opacity: 0.85; margin-top: 4px; }
         #ntdungdev-chat-footer.disabled { pointer-events: none; opacity: 0.6; }
-        .ntdungdev-typing { font-size: 12px; color: #94a3b8; align-self: flex-start; display: none; margin-left: 8px; }
+
+        /* === TYPING INDICATOR — 3 dots bouncing === */
+        .ntdungdev-typing { display: none; align-self: flex-start; max-width: 82%; padding: 14px 16px; background: white; border: 1px solid #e2e8f0; border-radius: 16px 16px 16px 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .ntdungdev-typing-dots { display: inline-flex; gap: 5px; align-items: center; }
+        .ntdungdev-typing-dots span { width: 8px; height: 8px; background: #94a3b8; border-radius: 50%; display: inline-block; animation: ntdungdev-typing-bounce 1.4s infinite ease-in-out both; }
+        .ntdungdev-typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .ntdungdev-typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .ntdungdev-typing-dots span:nth-child(3) { animation-delay: 0s; }
+        @keyframes ntdungdev-typing-bounce {
+            0%, 80%, 100% { transform: translateY(0) scale(0.8); opacity: 0.5; }
+            40% { transform: translateY(-4px) scale(1); opacity: 1; }
+        }
 
         /* === RESPONSIVE MOBILE === */
         @media (max-width: 480px) {
@@ -808,7 +819,9 @@ function ntdungdev_render_chat_widget() {
             <button id="ntdungdev-chat-close" title="Đóng">✕</button>
         </div>
         <div id="ntdungdev-chat-body">
-            <div id="ntdungdev-typing" class="ntdungdev-typing"><?php echo $typing_text; ?></div>
+            <div id="ntdungdev-typing" class="ntdungdev-typing" aria-label="<?php echo $typing_text; ?>">
+                <div class="ntdungdev-typing-dots"><span></span><span></span><span></span></div>
+            </div>
         </div>
         <div id="ntdungdev-chat-footer">
             <input type="file" id="ntdungdev-chat-file" accept="image/*" style="display:none">
@@ -1088,14 +1101,16 @@ function ntdungdev_render_chat_widget() {
 
             // ===== STREAMING: gọi trực tiếp Streaming Proxy SSE =====
             async function sendMessageStream(text, imageData) {
-                // Tạo bot bubble rỗng để stream vào
+                // Hide global typing dots (we'll show them inside the bubble instead)
+                typing.style.display = 'none';
+
+                // Tạo bot bubble với typing dots animation
                 const botDiv = document.createElement('div');
                 botDiv.className = 'ntdungdev-msg ntdungdev-msg-bot';
-                botDiv.innerHTML = '<span class="ntdungdev-stream-progress" style="opacity:0.7;font-style:italic;"></span>';
+                botDiv.innerHTML = '<div class="ntdungdev-typing-dots"><span></span><span></span><span></span></div>';
                 body.insertBefore(botDiv, typing);
                 body.scrollTop = body.scrollHeight;
 
-                const progressSpan = botDiv.querySelector('.ntdungdev-stream-progress');
                 let accumulated = '';
                 let hasRealContent = false;
 
@@ -1122,8 +1137,6 @@ function ntdungdev_render_chat_widget() {
                         throw new Error('HTTP ' + res.status);
                     }
 
-                    typing.style.display = 'none';
-
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
@@ -1147,23 +1160,22 @@ function ntdungdev_render_chat_widget() {
                             try {
                                 const parsed = JSON.parse(data);
                                 if (currentEvent === 'progress') {
-                                    if (!hasRealContent) progressSpan.textContent = parsed.text || '...';
+                                    // Ignore progress text — chỉ hiện typing dots animation
+                                    // (dots đã có sẵn trong bubble từ khi tạo)
                                 } else if (currentEvent === 'token') {
                                     if (!hasRealContent) {
-                                        progressSpan.remove();
+                                        // First real token → xoá dots, chuẩn bị stream text
+                                        botDiv.innerHTML = '';
                                         hasRealContent = true;
                                     }
                                     accumulated += parsed.delta || '';
                                     botDiv.innerHTML = accumulated.replace(/\n/g, '<br>');
                                     body.scrollTop = body.scrollHeight;
                                 } else if (currentEvent === 'done') {
-                                    // Final cleanup
                                     if (!hasRealContent) {
-                                        progressSpan.remove();
                                         botDiv.innerHTML = (accumulated || 'Dạ em chưa hiểu ý anh/chị, mình có thể nói rõ hơn giúp em không ạ?').replace(/\n/g, '<br>');
                                     }
                                 } else if (currentEvent === 'error') {
-                                    if (progressSpan && progressSpan.parentNode) progressSpan.remove();
                                     botDiv.innerHTML = 'Hệ thống đang bảo trì, vui lòng thử lại sau!';
                                 }
                             } catch (e) { /* skip parse error */ }
@@ -1177,7 +1189,6 @@ function ntdungdev_render_chat_widget() {
                     }
                 } catch (error) {
                     typing.style.display = 'none';
-                    if (progressSpan && progressSpan.parentNode) progressSpan.remove();
                     botDiv.innerHTML = 'Lỗi mạng, không thể kết nối tới máy chủ.';
                 }
             }
