@@ -2,8 +2,8 @@
 /**
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
- * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Streaming response, typing dots animation, lưu lịch sử chat.
- * Version: 1.1.1
+ * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Hỗ trợ đính kèm ảnh + PDF, streaming response, typing dots animation.
+ * Version: 1.1.2
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.1.1');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.1.2');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -824,13 +824,20 @@ function ntdungdev_render_chat_widget() {
             </div>
         </div>
         <div id="ntdungdev-chat-footer">
-            <input type="file" id="ntdungdev-chat-file" accept="image/*" style="display:none">
-            <button id="ntdungdev-chat-img-btn" title="Gửi hình ảnh">🖼</button>
+            <input type="file" id="ntdungdev-chat-file" accept="image/*,application/pdf,.pdf" style="display:none">
+            <button id="ntdungdev-chat-img-btn" title="Đính kèm ảnh hoặc PDF">📎</button>
             <input type="text" id="ntdungdev-chat-input" placeholder="<?php echo $input_holder; ?>" autocomplete="off">
             <button id="ntdungdev-chat-send">➤</button>
             <div id="ntdungdev-img-preview">
                 <img id="ntdungdev-img-preview-img" src="" alt="Preview">
-                <button id="ntdungdev-img-preview-remove" title="Xóa ảnh">✕</button>
+                <div id="ntdungdev-file-preview-doc" style="display:none; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 28px;">📄</span>
+                    <div style="flex: 1; min-width: 0;">
+                        <div id="ntdungdev-file-name" style="font-size: 12px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+                        <div id="ntdungdev-file-size" style="font-size: 11px; color: #94a3b8;"></div>
+                    </div>
+                </div>
+                <button id="ntdungdev-img-preview-remove" title="Xóa file">✕</button>
             </div>
         </div>
     </div>
@@ -896,12 +903,23 @@ function ntdungdev_render_chat_widget() {
                 }
             });
 
-            function addMsg(text, isBot, save = true, imageUrl = null, uploading = false) {
+            function addMsg(text, isBot, save = true, imageUrl = null, uploading = false, fileMeta = null) {
                 const div = document.createElement('div');
                 div.className = 'ntdungdev-msg ' + (isBot ? 'ntdungdev-msg-bot' : 'ntdungdev-msg-user');
 
                 let html = '';
-                if (imageUrl) {
+                // fileMeta = {name, size, mime} cho PDF; imageUrl cho ảnh
+                if (fileMeta && fileMeta.mime && fileMeta.mime.indexOf('pdf') !== -1) {
+                    // PDF chip
+                    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,0.18);border-radius:10px;margin-bottom:4px;">';
+                    html += '<span style="font-size:24px;">📄</span>';
+                    html += '<div style="min-width:0;flex:1;overflow:hidden;">';
+                    html += '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (fileMeta.name || 'document.pdf') + '</div>';
+                    html += '<div style="font-size:11px;opacity:0.8;">' + ((fileMeta.size || 0) / 1024).toFixed(1) + ' KB · PDF</div>';
+                    html += '</div></div>';
+                    if (uploading) html += '<div class="ntdungdev-upload-status">Đang tải lên...</div>';
+                    if (text) html += '<br>';
+                } else if (imageUrl) {
                     html += '<div class="ntdungdev-img-wrap' + (uploading ? ' uploading' : '') + '">';
                     html += '<img src="' + imageUrl + '" class="ntdungdev-chat-image" onclick="window.open(this.src,\'_blank\')" alt="Hình ảnh">';
                     html += '<div class="ntdungdev-img-spinner"></div>';
@@ -918,7 +936,7 @@ function ntdungdev_render_chat_widget() {
                 body.scrollTop = body.scrollHeight;
 
                 if (save) {
-                    chatHistory.push({ text: text, isBot: isBot, imageUrl: imageUrl || null });
+                    chatHistory.push({ text: text, isBot: isBot, imageUrl: imageUrl || null, fileMeta: fileMeta || null });
                     sessionStorage.setItem('ntdungdev_chat_history', JSON.stringify(chatHistory));
                 }
                 return div;
@@ -928,35 +946,52 @@ function ntdungdev_render_chat_widget() {
             if (chatHistory.length === 0) {
                 addMsg(GREETING, true);
             } else {
-                chatHistory.forEach(msg => addMsg(msg.text, msg.isBot, false, msg.imageUrl || null));
+                chatHistory.forEach(msg => addMsg(msg.text, msg.isBot, false, msg.imageUrl || null, false, msg.fileMeta || null));
             }
 
-            // Xử lý chọn ảnh
+            // Xử lý chọn file (ảnh hoặc PDF)
+            const fileDocPreview = document.getElementById('ntdungdev-file-preview-doc');
+            const fileNameEl = document.getElementById('ntdungdev-file-name');
+            const fileSizeEl = document.getElementById('ntdungdev-file-size');
+
             imgBtn.onclick = () => fileInput.click();
 
             fileInput.onchange = function() {
                 const file = this.files[0];
                 if (!file) return;
 
-                if (!file.type.startsWith('image/')) {
-                    alert('Vui lòng chọn file hình ảnh (JPG, PNG, GIF, ...)');
+                const isImage = file.type.startsWith('image/');
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+                if (!isImage && !isPdf) {
+                    alert('Chỉ hỗ trợ file ảnh (JPG, PNG, GIF, WebP) hoặc PDF.');
                     this.value = '';
                     return;
                 }
 
                 if (file.size > MAX_FILE_SIZE) {
-                    alert('Kích thước ảnh tối đa là 5MB. Vui lòng chọn ảnh nhỏ hơn.');
+                    alert('Kích thước file tối đa là 5MB. Vui lòng chọn file nhỏ hơn.');
                     this.value = '';
                     return;
                 }
 
                 selectedFile = file;
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    imgPrevImg.src = e.target.result;
-                    imgPreview.style.display = 'block';
-                };
-                reader.readAsDataURL(file);
+                imgPreview.style.display = 'block';
+
+                if (isImage) {
+                    // Image preview
+                    fileDocPreview.style.display = 'none';
+                    imgPrevImg.style.display = 'block';
+                    const reader = new FileReader();
+                    reader.onload = function(e) { imgPrevImg.src = e.target.result; };
+                    reader.readAsDataURL(file);
+                } else {
+                    // PDF preview
+                    imgPrevImg.style.display = 'none';
+                    fileDocPreview.style.display = 'flex';
+                    fileNameEl.textContent = file.name;
+                    fileSizeEl.textContent = (file.size / 1024).toFixed(1) + ' KB · PDF';
+                }
             };
 
             imgRemove.onclick = function() {
@@ -964,9 +999,12 @@ function ntdungdev_render_chat_widget() {
                 fileInput.value = '';
                 imgPreview.style.display = 'none';
                 imgPrevImg.src = '';
+                imgPrevImg.style.display = 'block';
+                fileDocPreview.style.display = 'none';
             };
 
             async function uploadImage(file) {
+                // Giữ tên cũ uploadImage cho backward compat, nhưng nay cũng hỗ trợ PDF
                 const formData = new FormData();
                 formData.append('action', 'ntdungdev_upload_image');
                 formData.append('image', file);
@@ -1000,37 +1038,40 @@ function ntdungdev_render_chat_widget() {
 
             async function sendMessage() {
                 const text = input.value.trim();
-                const hasImage = selectedFile !== null;
+                const hasFile = selectedFile !== null;
+                const isPdfFile = hasFile && (selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf'));
+                const isImageFile = hasFile && selectedFile.type.startsWith('image/');
 
-                if (!text && !hasImage) return;
+                if (!text && !hasFile) return;
 
                 setFooterDisabled(true);
 
                 let imageData = null;
                 let localPreview = null;
+                let fileMeta = null;
                 let msgDiv = null;
 
                 // Lấy preview local trước khi reset
-                if (hasImage) {
+                if (isImageFile) {
                     localPreview = imgPrevImg.src;
+                } else if (isPdfFile) {
+                    fileMeta = { name: selectedFile.name, size: selectedFile.size, mime: selectedFile.type || 'application/pdf' };
                 }
 
                 // Reset input + preview ngay lập tức
                 input.value = '';
-                if (hasImage) {
-                    selectedFile._ref = selectedFile;
-                }
-                const fileToUpload = hasImage ? selectedFile : null;
+                const fileToUpload = hasFile ? selectedFile : null;
                 selectedFile = null;
                 fileInput.value = '';
                 imgPreview.style.display = 'none';
                 imgPrevImg.src = '';
+                fileDocPreview.style.display = 'none';
 
-                // Hiện tin nhắn user ngay lập tức (ảnh local + spinner nếu có ảnh)
-                msgDiv = addMsg(text, false, false, localPreview, hasImage);
+                // Hiện tin nhắn user ngay lập tức (ảnh local + spinner / PDF chip)
+                msgDiv = addMsg(text, false, false, localPreview, hasFile, fileMeta);
 
-                // Nếu có ảnh → đọc base64
-                if (hasImage && fileToUpload) {
+                // Nếu có file → đọc base64 (image or PDF)
+                if (hasFile && fileToUpload) {
                     try {
                         imageData = await uploadImage(fileToUpload);
 
@@ -1040,12 +1081,11 @@ function ntdungdev_render_chat_widget() {
                         if (wrap) wrap.classList.remove('uploading');
                         if (status) status.remove();
                     } catch (error) {
-                        // Lỗi → hiện lỗi trên ảnh
                         const wrap = msgDiv.querySelector('.ntdungdev-img-wrap');
                         const status = msgDiv.querySelector('.ntdungdev-upload-status');
                         if (wrap) wrap.classList.remove('uploading');
-                        if (status) { status.textContent = 'Tải ảnh thất bại'; status.style.color = '#ef4444'; }
-                        addMsg("Không thể tải ảnh lên. Vui lòng thử lại.", true);
+                        if (status) { status.textContent = 'Tải file thất bại'; status.style.color = '#ef4444'; }
+                        addMsg("Không thể tải file lên. Vui lòng thử lại.", true);
                         setFooterDisabled(false);
                         input.focus();
                         return;
@@ -1053,7 +1093,7 @@ function ntdungdev_render_chat_widget() {
                 }
 
                 // Lưu lịch sử
-                chatHistory.push({ text: text, isBot: false, imageUrl: localPreview || null });
+                chatHistory.push({ text: text, isBot: false, imageUrl: localPreview || null, fileMeta: fileMeta || null });
                 sessionStorage.setItem('ntdungdev_chat_history', JSON.stringify(chatHistory));
 
                 // Hiện "AI đang gõ..." sau khi xử lý xong
@@ -1209,13 +1249,16 @@ add_action('wp_ajax_ntdungdev_upload_image', 'ntdungdev_handle_image_upload');
 add_action('wp_ajax_nopriv_ntdungdev_upload_image', 'ntdungdev_handle_image_upload');
 function ntdungdev_handle_image_upload() {
     if (empty($_FILES['image'])) {
-        wp_send_json_error('Không tìm thấy file hình ảnh.');
+        wp_send_json_error('Không tìm thấy file đính kèm.');
     }
 
     $file = $_FILES['image'];
 
-    // Kiểm tra loại file
-    $allowed_types = array('image/jpeg', 'image/png', 'image/gif', 'image/webp');
+    // Kiểm tra loại file (image hoặc PDF)
+    $allowed_types = array(
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+    );
     if (function_exists('finfo_open')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime_type = finfo_file($finfo, $file['tmp_name']);
@@ -1225,24 +1268,25 @@ function ntdungdev_handle_image_upload() {
     }
 
     if (!in_array($mime_type, $allowed_types)) {
-        wp_send_json_error('Loại file không được hỗ trợ. Chỉ chấp nhận JPG, PNG, GIF, WebP.');
+        wp_send_json_error('Chỉ hỗ trợ file ảnh (JPG, PNG, GIF, WebP) hoặc PDF.');
     }
 
     // Kiểm tra kích thước (5MB)
     if ($file['size'] > 5 * 1024 * 1024) {
-        wp_send_json_error('Kích thước ảnh tối đa là 5MB.');
+        wp_send_json_error('Kích thước file tối đa là 5MB.');
     }
 
     // Đọc file thành base64 để gửi trực tiếp cho n8n (tránh lỗi 404 khi n8n tải URL)
     $file_data = file_get_contents($file['tmp_name']);
     if ($file_data === false) {
-        wp_send_json_error('Không thể đọc file hình ảnh.');
+        wp_send_json_error('Không thể đọc file đính kèm.');
     }
 
     $base64 = base64_encode($file_data);
-    $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg';
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'bin';
     $file_name = sanitize_file_name($file['name']);
 
+    // Giữ tên field `image_*` cho backward compat — nay chứa cả ảnh lẫn PDF
     wp_send_json_success(array(
         'image_base64' => $base64,
         'image_name'   => $file_name,
