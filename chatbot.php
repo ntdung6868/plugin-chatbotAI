@@ -2,8 +2,8 @@
 /**
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
- * Description: Chatbot AI đa kênh kết nối trực tiếp với n8n Webhook có menu cài đặt. Lưu lịch sử chat khi F5.
- * Version: 1.0.4
+ * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Hỗ trợ streaming response real-time, progress messages, lưu lịch sử chat.
+ * Version: 1.1.0
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.0.4');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.1.0');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -200,6 +200,8 @@ add_action('admin_init', 'ntdungdev_chat_admin_init');
 function ntdungdev_chat_admin_init() {
     $options = [
         'ntdungdev_n8n_webhook_url',
+        'ntdungdev_streaming_url',
+        'ntdungdev_streaming_enabled',
         'ntdungdev_bot_name',
         'ntdungdev_bot_subtitle',
         'ntdungdev_greeting_msg',
@@ -415,7 +417,35 @@ function ntdungdev_chat_settings_page() {
                                class="regular-text"
                                style="width: 100%; max-width: 600px;"
                                placeholder="https://..." />
-                        <p class="description">Nhập đường dẫn Webhook từ n8n để Chatbot gửi và nhận dữ liệu với AI.</p>
+                        <p class="description">Webhook n8n (chế độ thường, không streaming). Bot trả lời 1 lần khi xong.</p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row"><label for="ntdungdev_streaming_url">URL Streaming Proxy</label></th>
+                    <td>
+                        <input type="url"
+                               id="ntdungdev_streaming_url"
+                               name="ntdungdev_streaming_url"
+                               value="<?php echo esc_attr(get_option('ntdungdev_streaming_url', '')); ?>"
+                               class="regular-text"
+                               style="width: 100%; max-width: 600px;"
+                               placeholder="https://n8n.ntdungdev.id.vn/stream-chat" />
+                        <p class="description">URL Streaming Proxy (SSE). Bot hiện chữ dần dần như đang gõ. Để trống để dùng Webhook n8n thường.</p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row">Kích hoạt Streaming</th>
+                    <td>
+                        <label>
+                            <input type="checkbox"
+                                   name="ntdungdev_streaming_enabled"
+                                   value="1"
+                                   <?php checked(get_option('ntdungdev_streaming_enabled', '0'), '1'); ?> />
+                            Bật chế độ streaming (hiện chữ từng từ một, có progress message khi bot đang xử lý)
+                        </label>
+                        <p class="description">Cần điền "URL Streaming Proxy" ở trên. Nếu tắt, dùng Webhook n8n thường.</p>
                     </td>
                 </tr>
 
@@ -628,8 +658,13 @@ function ntdungdev_chat_settings_page() {
 
 add_action('wp_footer', 'ntdungdev_render_chat_widget');
 function ntdungdev_render_chat_widget() {
-    $webhook_url = get_option('ntdungdev_n8n_webhook_url');
-    if (empty($webhook_url)) return;
+    $webhook_url      = get_option('ntdungdev_n8n_webhook_url');
+    $streaming_url    = get_option('ntdungdev_streaming_url', '');
+    $streaming_enabled = get_option('ntdungdev_streaming_enabled', '0') === '1';
+
+    // Cần ít nhất 1 trong 2 (webhook hoặc streaming) để hiện widget
+    if (empty($webhook_url) && empty($streaming_url)) return;
+    if ($streaming_enabled && empty($streaming_url)) return;  // bật streaming nhưng không có URL
 
     $bot_name        = esc_html(get_option('ntdungdev_bot_name', 'AI Chatbot'));
     $bot_subtitle    = esc_html(get_option('ntdungdev_bot_subtitle', 'Hỗ trợ trực tuyến 24/7'));
@@ -805,6 +840,9 @@ function ntdungdev_render_chat_widget() {
 
             const GREETING = <?php echo wp_json_encode($greeting_msg); ?>;
             const AJAX_URL = '<?php echo admin_url("admin-ajax.php"); ?>';
+            const STREAMING_URL = <?php echo wp_json_encode($streaming_url); ?>;
+            const STREAMING_ENABLED = <?php echo $streaming_enabled ? 'true' : 'false'; ?>;
+            const WEBSITE = <?php echo wp_json_encode(preg_replace('#^https?://#', '', rtrim(site_url(), '/'))); ?>;
             const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
             let selectedFile = null;
@@ -1009,6 +1047,19 @@ function ntdungdev_render_chat_widget() {
                 typing.style.display = 'block';
                 body.scrollTop = body.scrollHeight;
 
+                // Route: streaming nếu được bật + có URL, ngược lại fallback legacy AJAX
+                if (STREAMING_ENABLED && STREAMING_URL) {
+                    await sendMessageStream(text, imageData);
+                } else {
+                    await sendMessageLegacy(text, imageData);
+                }
+
+                setFooterDisabled(false);
+                input.focus();
+            }
+
+            // ===== LEGACY: gọi qua admin-ajax.php → wp_remote_post → n8n =====
+            async function sendMessageLegacy(text, imageData) {
                 const formData = new FormData();
                 formData.append('action', 'ntdungdev_send_message');
                 formData.append('message', text || '');
@@ -1021,12 +1072,8 @@ function ntdungdev_render_chat_widget() {
                 }
 
                 try {
-                    const response = await fetch(AJAX_URL, {
-                        method: 'POST',
-                        body: formData
-                    });
+                    const response = await fetch(AJAX_URL, { method: 'POST', body: formData });
                     const result = await response.json();
-
                     typing.style.display = 'none';
                     if (result.success) {
                         addMsg(result.data, true);
@@ -1037,9 +1084,102 @@ function ntdungdev_render_chat_widget() {
                     typing.style.display = 'none';
                     addMsg("Lỗi mạng, không thể kết nối tới máy chủ.", true);
                 }
+            }
 
-                setFooterDisabled(false);
-                input.focus();
+            // ===== STREAMING: gọi trực tiếp Streaming Proxy SSE =====
+            async function sendMessageStream(text, imageData) {
+                // Tạo bot bubble rỗng để stream vào
+                const botDiv = document.createElement('div');
+                botDiv.className = 'ntdungdev-msg ntdungdev-msg-bot';
+                botDiv.innerHTML = '<span class="ntdungdev-stream-progress" style="opacity:0.7;font-style:italic;"></span>';
+                body.insertBefore(botDiv, typing);
+                body.scrollTop = body.scrollHeight;
+
+                const progressSpan = botDiv.querySelector('.ntdungdev-stream-progress');
+                let accumulated = '';
+                let hasRealContent = false;
+
+                const payload = {
+                    session_id: WEBSITE + '_' + sessionId,
+                    message: text || '',
+                    website: WEBSITE,
+                    page_url: window.location.href,
+                };
+                if (imageData) {
+                    payload.image_base64 = imageData.image_base64;
+                    payload.image_name = imageData.image_name;
+                    payload.image_mime = imageData.image_mime;
+                }
+
+                try {
+                    const res = await fetch(STREAMING_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!res.ok || !res.body) {
+                        throw new Error('HTTP ' + res.status);
+                    }
+
+                    typing.style.display = 'none';
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let currentEvent = 'message';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+
+                        let nl;
+                        while ((nl = buffer.indexOf('\n')) !== -1) {
+                            const line = buffer.slice(0, nl);
+                            buffer = buffer.slice(nl + 1);
+                            if (line.startsWith(':')) continue; // SSE comment / keepalive
+                            if (line === '') { currentEvent = 'message'; continue; }
+                            if (line.startsWith('event: ')) { currentEvent = line.slice(7).trim(); continue; }
+                            if (!line.startsWith('data: ')) continue;
+                            const data = line.slice(6);
+
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (currentEvent === 'progress') {
+                                    if (!hasRealContent) progressSpan.textContent = parsed.text || '...';
+                                } else if (currentEvent === 'token') {
+                                    if (!hasRealContent) {
+                                        progressSpan.remove();
+                                        hasRealContent = true;
+                                    }
+                                    accumulated += parsed.delta || '';
+                                    botDiv.innerHTML = accumulated.replace(/\n/g, '<br>');
+                                    body.scrollTop = body.scrollHeight;
+                                } else if (currentEvent === 'done') {
+                                    // Final cleanup
+                                    if (!hasRealContent) {
+                                        progressSpan.remove();
+                                        botDiv.innerHTML = (accumulated || 'Dạ em chưa hiểu ý anh/chị, mình có thể nói rõ hơn giúp em không ạ?').replace(/\n/g, '<br>');
+                                    }
+                                } else if (currentEvent === 'error') {
+                                    if (progressSpan && progressSpan.parentNode) progressSpan.remove();
+                                    botDiv.innerHTML = 'Hệ thống đang bảo trì, vui lòng thử lại sau!';
+                                }
+                            } catch (e) { /* skip parse error */ }
+                        }
+                    }
+
+                    // Lưu lịch sử bot
+                    if (accumulated) {
+                        chatHistory.push({ text: accumulated.trim(), isBot: true, imageUrl: null });
+                        sessionStorage.setItem('ntdungdev_chat_history', JSON.stringify(chatHistory));
+                    }
+                } catch (error) {
+                    typing.style.display = 'none';
+                    if (progressSpan && progressSpan.parentNode) progressSpan.remove();
+                    botDiv.innerHTML = 'Lỗi mạng, không thể kết nối tới máy chủ.';
+                }
             }
 
             send.onclick = sendMessage;
