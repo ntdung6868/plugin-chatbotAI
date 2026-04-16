@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Hỗ trợ đính kèm ảnh + PDF, streaming response, typing dots animation.
- * Version: 1.1.3
+ * Version: 1.1.4
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.1.3');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.1.4');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -1130,7 +1130,23 @@ function ntdungdev_render_chat_widget() {
                     const result = await response.json();
                     typing.style.display = 'none';
                     if (result.success) {
-                        addMsg(result.data, true);
+                        let reply = result.data;
+                        // Parse JSON nếu n8n trả về JSON string chứa ai_reply
+                        if (typeof reply === 'string') {
+                            try {
+                                const parsed = JSON.parse(reply);
+                                if (parsed && parsed.ai_reply) {
+                                    reply = parsed.ai_reply;
+                                }
+                            } catch(e) { /* không phải JSON, giữ nguyên */ }
+                        } else if (typeof reply === 'object' && reply !== null) {
+                            reply = reply.ai_reply || JSON.stringify(reply);
+                        }
+                        if (reply && String(reply).trim()) {
+                            addMsg(String(reply), true);
+                        } else {
+                            addMsg("Dạ em chưa nhận được phản hồi, anh/chị thử lại giúp em nha!", true);
+                        }
                     } else {
                         addMsg(result.data || "Hệ thống đang bảo trì, vui lòng thử lại sau!", true);
                     }
@@ -1354,6 +1370,19 @@ function ntdungdev_handle_ajax_request() {
     }
 
     $body = wp_remote_retrieve_body($response);
+
+    // Thử parse JSON để lấy ai_reply nếu n8n trả về JSON object
+    if (!empty($body)) {
+        $decoded = json_decode($body, true);
+        if (is_array($decoded) && isset($decoded['ai_reply'])) {
+            wp_send_json_success($decoded['ai_reply']);
+        }
+    }
+
+    // Fallback: trả nguyên body
+    if (empty(trim($body))) {
+        wp_send_json_error('Không nhận được phản hồi từ AI.');
+    }
     wp_send_json_success($body);
 }
 
