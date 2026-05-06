@@ -2,8 +2,8 @@
 /**
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
- * Description: Chatbot AI đa kênh kết nối n8n Webhook hoặc Streaming Proxy (SSE). Hỗ trợ đính kèm ảnh + PDF, streaming response, typing dots animation.
- * Version: 1.1.4
+ * Description: Chatbot AI đa kênh kết nối n8n Webhook. Hỗ trợ đính kèm ảnh + PDF, typing dots animation.
+ * Version: 1.2.0
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.1.4');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.2.0');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -200,8 +200,8 @@ add_action('admin_init', 'ntdungdev_chat_admin_init');
 function ntdungdev_chat_admin_init() {
     $options = [
         'ntdungdev_n8n_webhook_url',
-        'ntdungdev_streaming_url',
-        'ntdungdev_streaming_enabled',
+        'ntdungdev_file_upload_enabled',
+        'ntdungdev_file_upload_mode',
         'ntdungdev_bot_name',
         'ntdungdev_bot_subtitle',
         'ntdungdev_greeting_msg',
@@ -417,35 +417,34 @@ function ntdungdev_chat_settings_page() {
                                class="regular-text"
                                style="width: 100%; max-width: 600px;"
                                placeholder="https://..." />
-                        <p class="description">Webhook n8n (chế độ thường, không streaming). Bot trả lời 1 lần khi xong.</p>
+                        <p class="description">Nhập đường dẫn Webhook từ n8n để Chatbot gửi và nhận dữ liệu với AI.</p>
                     </td>
                 </tr>
 
                 <tr>
-                    <th scope="row"><label for="ntdungdev_streaming_url">URL Streaming Proxy</label></th>
-                    <td>
-                        <input type="url"
-                               id="ntdungdev_streaming_url"
-                               name="ntdungdev_streaming_url"
-                               value="<?php echo esc_attr(get_option('ntdungdev_streaming_url', '')); ?>"
-                               class="regular-text"
-                               style="width: 100%; max-width: 600px;"
-                               placeholder="https://n8n.ntdungdev.id.vn/stream-chat" />
-                        <p class="description">URL Streaming Proxy (SSE). Bot hiện chữ dần dần như đang gõ. Để trống để dùng Webhook n8n thường.</p>
-                    </td>
-                </tr>
-
-                <tr>
-                    <th scope="row">Kích hoạt Streaming</th>
+                    <th scope="row">Cho phép gửi file</th>
                     <td>
                         <label>
                             <input type="checkbox"
-                                   name="ntdungdev_streaming_enabled"
+                                   name="ntdungdev_file_upload_enabled"
                                    value="1"
-                                   <?php checked(get_option('ntdungdev_streaming_enabled', '0'), '1'); ?> />
-                            Bật chế độ streaming (hiện chữ từng từ một, có progress message khi bot đang xử lý)
+                                   <?php checked(get_option('ntdungdev_file_upload_enabled', '1'), '1'); ?> />
+                            Bật nút đính kèm trong khung chat
                         </label>
-                        <p class="description">Cần điền "URL Streaming Proxy" ở trên. Nếu tắt, dùng Webhook n8n thường.</p>
+                        <p class="description">Tắt nếu bạn chỉ muốn người dùng nhập tin nhắn dạng văn bản.</p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row"><label for="ntdungdev_file_upload_mode">Loại file cho phép</label></th>
+                    <td>
+                        <?php $file_mode = get_option('ntdungdev_file_upload_mode', 'both'); ?>
+                        <select id="ntdungdev_file_upload_mode" name="ntdungdev_file_upload_mode">
+                            <option value="both"  <?php selected($file_mode, 'both');  ?>>Ảnh và PDF</option>
+                            <option value="image" <?php selected($file_mode, 'image'); ?>>Chỉ ảnh</option>
+                            <option value="pdf"   <?php selected($file_mode, 'pdf');   ?>>Chỉ PDF</option>
+                        </select>
+                        <p class="description">Chỉ áp dụng khi "Cho phép gửi file" được bật.</p>
                     </td>
                 </tr>
 
@@ -658,13 +657,17 @@ function ntdungdev_chat_settings_page() {
 
 add_action('wp_footer', 'ntdungdev_render_chat_widget');
 function ntdungdev_render_chat_widget() {
-    $webhook_url      = get_option('ntdungdev_n8n_webhook_url');
-    $streaming_url    = get_option('ntdungdev_streaming_url', '');
-    $streaming_enabled = get_option('ntdungdev_streaming_enabled', '0') === '1';
+    $webhook_url = get_option('ntdungdev_n8n_webhook_url');
+    $file_upload_enabled = get_option('ntdungdev_file_upload_enabled', '1') === '1';
+    $file_upload_mode = get_option('ntdungdev_file_upload_mode', 'both');
+    if (!in_array($file_upload_mode, ['both', 'image', 'pdf'], true)) $file_upload_mode = 'both';
+    $file_accept = $file_upload_mode === 'image' ? 'image/*'
+                 : ($file_upload_mode === 'pdf' ? 'application/pdf,.pdf'
+                 : 'image/*,application/pdf,.pdf');
+    $file_btn_title = $file_upload_mode === 'image' ? 'Đính kèm ảnh'
+                    : ($file_upload_mode === 'pdf' ? 'Đính kèm PDF' : 'Đính kèm ảnh hoặc PDF');
 
-    // Cần ít nhất 1 trong 2 (webhook hoặc streaming) để hiện widget
-    if (empty($webhook_url) && empty($streaming_url)) return;
-    if ($streaming_enabled && empty($streaming_url)) return;  // bật streaming nhưng không có URL
+    if (empty($webhook_url)) return;
 
     $bot_name        = esc_html(get_option('ntdungdev_bot_name', 'AI Chatbot'));
     $bot_subtitle    = esc_html(get_option('ntdungdev_bot_subtitle', 'Hỗ trợ trực tuyến 24/7'));
@@ -824,8 +827,8 @@ function ntdungdev_render_chat_widget() {
             </div>
         </div>
         <div id="ntdungdev-chat-footer">
-            <input type="file" id="ntdungdev-chat-file" accept="image/*,application/pdf,.pdf" style="display:none">
-            <button id="ntdungdev-chat-img-btn" title="Đính kèm ảnh hoặc PDF">📎</button>
+            <input type="file" id="ntdungdev-chat-file" accept="<?php echo esc_attr($file_accept); ?>" style="display:none">
+            <button id="ntdungdev-chat-img-btn" title="<?php echo esc_attr($file_btn_title); ?>"<?php echo $file_upload_enabled ? '' : ' style="display:none"'; ?>>📎</button>
             <input type="text" id="ntdungdev-chat-input" placeholder="<?php echo $input_holder; ?>" autocomplete="off">
             <button id="ntdungdev-chat-send">➤</button>
             <div id="ntdungdev-img-preview">
@@ -860,9 +863,8 @@ function ntdungdev_render_chat_widget() {
 
             const GREETING = <?php echo wp_json_encode($greeting_msg); ?>;
             const AJAX_URL = '<?php echo admin_url("admin-ajax.php"); ?>';
-            const STREAMING_URL = <?php echo wp_json_encode($streaming_url); ?>;
-            const STREAMING_ENABLED = <?php echo $streaming_enabled ? 'true' : 'false'; ?>;
-            const WEBSITE = <?php echo wp_json_encode(preg_replace('#^https?://#', '', rtrim(site_url(), '/'))); ?>;
+            const FILE_UPLOAD_ENABLED = <?php echo $file_upload_enabled ? 'true' : 'false'; ?>;
+            const FILE_UPLOAD_MODE = <?php echo wp_json_encode($file_upload_mode); ?>; // 'both' | 'image' | 'pdf'
             const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB
 
             let selectedFile = null;
@@ -954,17 +956,26 @@ function ntdungdev_render_chat_widget() {
             const fileNameEl = document.getElementById('ntdungdev-file-name');
             const fileSizeEl = document.getElementById('ntdungdev-file-size');
 
-            imgBtn.onclick = () => fileInput.click();
+            if (FILE_UPLOAD_ENABLED) {
+                imgBtn.onclick = () => fileInput.click();
+            }
 
             fileInput.onchange = function() {
+                if (!FILE_UPLOAD_ENABLED) { this.value = ''; return; }
                 const file = this.files[0];
                 if (!file) return;
 
                 const isImage = file.type.startsWith('image/');
                 const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-                if (!isImage && !isPdf) {
-                    alert('Chỉ hỗ trợ file ảnh (JPG, PNG, GIF, WebP) hoặc PDF.');
+                const allowImage = (FILE_UPLOAD_MODE === 'both' || FILE_UPLOAD_MODE === 'image');
+                const allowPdf   = (FILE_UPLOAD_MODE === 'both' || FILE_UPLOAD_MODE === 'pdf');
+
+                if ((isImage && !allowImage) || (isPdf && !allowPdf) || (!isImage && !isPdf)) {
+                    const msg = FILE_UPLOAD_MODE === 'image' ? 'Chỉ hỗ trợ file ảnh (JPG, PNG, GIF, WebP).'
+                              : FILE_UPLOAD_MODE === 'pdf'   ? 'Chỉ hỗ trợ file PDF.'
+                              : 'Chỉ hỗ trợ file ảnh (JPG, PNG, GIF, WebP) hoặc PDF.';
+                    alert(msg);
                     this.value = '';
                     return;
                 }
@@ -1101,12 +1112,7 @@ function ntdungdev_render_chat_widget() {
                 typing.style.display = 'block';
                 body.scrollTop = body.scrollHeight;
 
-                // Route: streaming nếu được bật + có URL, ngược lại fallback legacy AJAX
-                if (STREAMING_ENABLED && STREAMING_URL) {
-                    await sendMessageStream(text, imageData);
-                } else {
-                    await sendMessageLegacy(text, imageData);
-                }
+                await sendMessageLegacy(text, imageData);
 
                 setFooterDisabled(false);
                 input.focus();
@@ -1153,100 +1159,6 @@ function ntdungdev_render_chat_widget() {
                 } catch (error) {
                     typing.style.display = 'none';
                     addMsg("Lỗi mạng, không thể kết nối tới máy chủ.", true);
-                }
-            }
-
-            // ===== STREAMING: gọi trực tiếp Streaming Proxy SSE =====
-            async function sendMessageStream(text, imageData) {
-                // Hide global typing dots (we'll show them inside the bubble instead)
-                typing.style.display = 'none';
-
-                // Tạo bot bubble với typing dots animation
-                const botDiv = document.createElement('div');
-                botDiv.className = 'ntdungdev-msg ntdungdev-msg-bot';
-                botDiv.innerHTML = '<div class="ntdungdev-typing-dots"><span></span><span></span><span></span></div>';
-                body.insertBefore(botDiv, typing);
-                body.scrollTop = body.scrollHeight;
-
-                let accumulated = '';
-                let hasRealContent = false;
-
-                const payload = {
-                    session_id: WEBSITE + '_' + sessionId,
-                    message: text || '',
-                    website: WEBSITE,
-                    page_url: window.location.href,
-                };
-                if (imageData) {
-                    payload.image_base64 = imageData.image_base64;
-                    payload.image_name = imageData.image_name;
-                    payload.image_mime = imageData.image_mime;
-                }
-
-                try {
-                    const res = await fetch(STREAMING_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                    });
-
-                    if (!res.ok || !res.body) {
-                        throw new Error('HTTP ' + res.status);
-                    }
-
-                    const reader = res.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    let currentEvent = 'message';
-
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        buffer += decoder.decode(value, { stream: true });
-
-                        let nl;
-                        while ((nl = buffer.indexOf('\n')) !== -1) {
-                            const line = buffer.slice(0, nl);
-                            buffer = buffer.slice(nl + 1);
-                            if (line.startsWith(':')) continue; // SSE comment / keepalive
-                            if (line === '') { currentEvent = 'message'; continue; }
-                            if (line.startsWith('event: ')) { currentEvent = line.slice(7).trim(); continue; }
-                            if (!line.startsWith('data: ')) continue;
-                            const data = line.slice(6);
-
-                            try {
-                                const parsed = JSON.parse(data);
-                                if (currentEvent === 'progress') {
-                                    // Ignore progress text — chỉ hiện typing dots animation
-                                    // (dots đã có sẵn trong bubble từ khi tạo)
-                                } else if (currentEvent === 'token') {
-                                    if (!hasRealContent) {
-                                        // First real token → xoá dots, chuẩn bị stream text
-                                        botDiv.innerHTML = '';
-                                        hasRealContent = true;
-                                    }
-                                    accumulated += parsed.delta || '';
-                                    botDiv.innerHTML = accumulated.replace(/\n/g, '<br>');
-                                    body.scrollTop = body.scrollHeight;
-                                } else if (currentEvent === 'done') {
-                                    if (!hasRealContent) {
-                                        botDiv.innerHTML = (accumulated || 'Dạ em chưa hiểu ý anh/chị, mình có thể nói rõ hơn giúp em không ạ?').replace(/\n/g, '<br>');
-                                    }
-                                } else if (currentEvent === 'error') {
-                                    botDiv.innerHTML = 'Hệ thống đang bảo trì, vui lòng thử lại sau!';
-                                }
-                            } catch (e) { /* skip parse error */ }
-                        }
-                    }
-
-                    // Lưu lịch sử bot
-                    if (accumulated) {
-                        chatHistory.push({ text: accumulated.trim(), isBot: true, imageUrl: null });
-                        sessionStorage.setItem('ntdungdev_chat_history', JSON.stringify(chatHistory));
-                    }
-                } catch (error) {
-                    typing.style.display = 'none';
-                    botDiv.innerHTML = 'Lỗi mạng, không thể kết nối tới máy chủ.';
                 }
             }
 
