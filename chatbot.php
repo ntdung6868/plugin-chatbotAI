@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối n8n Webhook. Hỗ trợ đính kèm ảnh + PDF, typing dots animation.
- * Version: 1.2.1
+ * Version: 1.2.2
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.2.1');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.2.2');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -185,6 +185,16 @@ function ntdungdev_chatbot_check_update_ajax() {
 }
 
 /**
+ * Trang Plugins: thêm link "Cài đặt" vào cột actions.
+ */
+add_filter('plugin_action_links_' . NTDUNGDEV_CHATBOT_SLUG, 'ntdungdev_chatbot_plugin_action_links');
+function ntdungdev_chatbot_plugin_action_links($links) {
+    $settings_link = '<a href="' . esc_url(admin_url('options-general.php?page=ntdungdev-chat-settings')) . '">Cài đặt</a>';
+    array_unshift($links, $settings_link);
+    return $links;
+}
+
+/**
  * Trang Plugins: chuyển "View details" và "Visit plugin site" sang trang giới thiệu chính thức.
  */
 add_filter('plugin_row_meta', 'ntdungdev_chatbot_plugin_row_meta', 10, 2);
@@ -252,19 +262,23 @@ function ntdungdev_chat_admin_init() {
 
 function ntdungdev_chat_settings_page() {
     $remote = ntdungdev_chatbot_get_remote_info();
+    $remote_failed = ($remote === false);
     $has_update = $remote && version_compare(NTDUNGDEV_CHATBOT_VERSION, $remote['version'], '<');
+    $border_color = $remote_failed ? '#dba617' : ($has_update ? '#d63638' : '#00a32a');
     $update_nonce = wp_create_nonce('ntdungdev_chatbot_update_nonce');
     ?>
     <div class="wrap">
         <h1>Cài Đặt AI Chat Bot</h1>
 
         <!-- KHUNG CẬP NHẬT -->
-        <div id="ntdungdev-update-box" style="background:#fff;border:1px solid #c3c4c7;border-left:4px solid <?php echo $has_update ? '#d63638' : '#00a32a'; ?>;padding:16px 20px;margin:15px 0 20px;border-radius:4px;">
+        <div id="ntdungdev-update-box" style="background:#fff;border:1px solid #c3c4c7;border-left:4px solid <?php echo $border_color; ?>;padding:16px 20px;margin:15px 0 20px;border-radius:4px;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                 <div>
                     <strong style="font-size:14px;">AI Chat Bot</strong>
                     <span style="color:#666;margin-left:8px;">Phiên bản hiện tại: <code><?php echo NTDUNGDEV_CHATBOT_VERSION; ?></code></span>
-                    <?php if ($has_update): ?>
+                    <?php if ($remote_failed): ?>
+                        <span style="display:inline-block;margin-left:10px;color:#dba617;font-weight:600;font-size:13px;">⚠ Chưa kiểm tra được bản mới</span>
+                    <?php elseif ($has_update): ?>
                         <span style="display:inline-block;margin-left:10px;background:#d63638;color:#fff;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:600;">
                             Có bản mới: <?php echo esc_html($remote['version']); ?>
                         </span>
