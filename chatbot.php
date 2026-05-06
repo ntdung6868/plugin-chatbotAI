@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối n8n Webhook. Hỗ trợ đính kèm ảnh + PDF, typing dots animation.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.2.0');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.2.1');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -174,11 +174,37 @@ function ntdungdev_chatbot_check_update_ajax() {
     check_ajax_referer('ntdungdev_chatbot_update_nonce', 'nonce');
     delete_transient('ntdungdev_chatbot_update_info');
     $remote = ntdungdev_chatbot_get_remote_info(true);
-    if ($remote && version_compare(NTDUNGDEV_CHATBOT_VERSION, $remote['version'], '<')) {
+    if ($remote === false) {
+        wp_send_json_error('Không kết nối được tới GitHub. Kiểm tra mạng / firewall / WP_HTTP_BLOCK_EXTERNAL trên server.');
+    }
+    if (version_compare(NTDUNGDEV_CHATBOT_VERSION, $remote['version'], '<')) {
         wp_send_json_success($remote);
     } else {
         wp_send_json_success(['version' => NTDUNGDEV_CHATBOT_VERSION, 'up_to_date' => true]);
     }
+}
+
+/**
+ * Trang Plugins: chuyển "View details" và "Visit plugin site" sang trang giới thiệu chính thức.
+ */
+add_filter('plugin_row_meta', 'ntdungdev_chatbot_plugin_row_meta', 10, 2);
+function ntdungdev_chatbot_plugin_row_meta($links, $file) {
+    if ($file !== NTDUNGDEV_CHATBOT_SLUG) return $links;
+
+    $details_url = 'https://ai-chat-bot-plugin.vercel.app';
+
+    // Bỏ link "View details" mặc định (nếu có) — nhận diện bằng class hoặc anchor text
+    foreach ($links as $i => $link) {
+        if (stripos($link, 'thickbox') !== false
+            || stripos($link, 'plugin-information') !== false
+            || stripos($link, 'View details') !== false
+            || stripos($link, 'Visit plugin site') !== false) {
+            unset($links[$i]);
+        }
+    }
+
+    array_unshift($links, '<a href="' . esc_url($details_url) . '" target="_blank" rel="noopener noreferrer">Xem chi tiết</a>');
+    return array_values($links);
 }
 
 // ==========================================
@@ -284,8 +310,10 @@ function ntdungdev_chat_settings_page() {
                     if (res.success && !res.data.up_to_date) {
                         status.innerHTML = '<span style="color:#d63638;font-weight:600;">Có bản mới: ' + res.data.version + '</span>';
                         setTimeout(function(){ location.reload(); }, 800);
-                    } else {
+                    } else if (res.success) {
                         status.innerHTML = '<span style="color:#00a32a;font-weight:600;">&#10003; Bạn đang dùng phiên bản mới nhất.</span>';
+                    } else {
+                        status.innerHTML = '<span style="color:#d63638;font-weight:600;">⚠ ' + (res.data || 'Không kết nối được tới GitHub.') + '</span>';
                     }
                 } else {
                     status.innerHTML = '<span style="color:#d63638;">Lỗi kết nối. Vui lòng thử lại.</span>';
