@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat Bot
  * Plugin URI: https://github.com/ntdung6868/plugin-chatbotAI
  * Description: Chatbot AI đa kênh kết nối n8n Webhook. Hỗ trợ đính kèm ảnh + PDF, typing dots animation.
- * Version: 1.2.2
+ * Version: 1.3.0
  * Author: Nguyễn Trí Dũng
  * Author URI: https://github.com/ntdung6868
  * Requires at least: 5.0
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) exit;
 // 0. CẬP NHẬT PLUGIN TỪ GITHUB RELEASES
 // ==========================================
 
-define('NTDUNGDEV_CHATBOT_VERSION', '1.2.2');
+define('NTDUNGDEV_CHATBOT_VERSION', '1.3.0');
 define('NTDUNGDEV_CHATBOT_SLUG', plugin_basename(__FILE__));
 define('NTDUNGDEV_CHATBOT_GITHUB_REPO', 'ntdung6868/plugin-chatbotAI');
 
@@ -47,25 +47,35 @@ function ntdungdev_chatbot_get_remote_info($force = false) {
         }
     }
 
-    $url = 'https://api.github.com/repos/' . NTDUNGDEV_CHATBOT_GITHUB_REPO . '/releases/latest';
-    $response = wp_remote_get($url, [
-        'headers' => [
-            'Accept'     => 'application/vnd.github.v3+json',
-            'User-Agent' => 'WordPress/' . get_bloginfo('version'),
-        ],
-        'timeout' => 15,
-    ]);
+    // Thử GitHub trực tiếp trước, nếu hosting chặn thì fallback sang Vercel proxy.
+    $sources = [
+        'https://api.github.com/repos/' . NTDUNGDEV_CHATBOT_GITHUB_REPO . '/releases/latest',
+        'https://ai-chat-bot-plugin.vercel.app/api/latest-release',
+    ];
 
-    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-        return false;
+    $release = null;
+    $via_proxy = false;
+    foreach ($sources as $idx => $src) {
+        $response = wp_remote_get($src, [
+            'headers' => [
+                'Accept'     => 'application/vnd.github.v3+json',
+                'User-Agent' => 'WordPress/' . get_bloginfo('version'),
+            ],
+            'timeout' => 15,
+        ]);
+        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+            $parsed = json_decode(wp_remote_retrieve_body($response), true);
+            if (!empty($parsed['tag_name'])) {
+                $release = $parsed;
+                $via_proxy = ($idx > 0);
+                break;
+            }
+        }
     }
 
-    $release = json_decode(wp_remote_retrieve_body($response), true);
-    if (empty($release['tag_name'])) {
-        return false;
-    }
+    if (!$release) return false;
 
-    $download_url = $release['zipball_url'];
+    $download_url = isset($release['zipball_url']) ? $release['zipball_url'] : '';
     if (!empty($release['assets'])) {
         foreach ($release['assets'] as $asset) {
             if (substr($asset['name'], -4) === '.zip') {
@@ -80,6 +90,7 @@ function ntdungdev_chatbot_get_remote_info($force = false) {
         'changelog'    => isset($release['body']) ? $release['body'] : '',
         'download_url' => $download_url,
         'published_at' => isset($release['published_at']) ? $release['published_at'] : '',
+        'via_proxy'    => $via_proxy,
     ];
 
     set_transient($cache_key, $info, 3 * HOUR_IN_SECONDS);
@@ -284,6 +295,9 @@ function ntdungdev_chat_settings_page() {
                         </span>
                     <?php else: ?>
                         <span style="display:inline-block;margin-left:10px;color:#00a32a;font-weight:600;font-size:13px;">&#10003; Đã cập nhật mới nhất</span>
+                    <?php endif; ?>
+                    <?php if (!empty($remote['via_proxy'])): ?>
+                        <span title="Server không gọi được api.github.com — đang dùng proxy qua ai-chat-bot-plugin.vercel.app" style="display:inline-block;margin-left:6px;color:#666;font-size:11px;background:#f0f0f1;padding:1px 8px;border-radius:8px;">via proxy</span>
                     <?php endif; ?>
                 </div>
                 <div style="display:flex;gap:8px;">
